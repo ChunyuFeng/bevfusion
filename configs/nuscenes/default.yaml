@@ -1,5 +1,8 @@
 dataset_type: NuScenesDataset
+# for pycharm remote debug
 dataset_root: data/nuscenes/
+# for remote run
+#dataset_root: data/nuscenes/
 gt_paste_stop_epoch: -1
 reduce_beams: 32
 load_dim: 5
@@ -44,6 +47,7 @@ map_classes:
   # - road_divider
   # - lane_divider
   - divider
+#  - obstacle
 
 input_modality:
   use_lidar: true
@@ -132,8 +136,8 @@ train_pipeline:
   -
     type: LoadBEVSegmentation
     dataset_root: ${dataset_root}
-    xbound: [-50.0, 50.0, 0.5]
-    ybound: [-50.0, 50.0, 0.5]
+    xbound: [-50.0, 50.0, 0.2]
+    ybound: [-50.0, 50.0, 0.2]
     classes: ${map_classes}
   -
     type: RandomFlip3D

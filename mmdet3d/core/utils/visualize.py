@@ -26,6 +26,7 @@ OBJECT_PALETTE = {
 }
 
 MAP_PALETTE = {
+    # drivable_area 包含所有物理可通行区域，与其他区域有重叠
     "drivable_area": (166, 206, 227),
     "road_segment": (31, 120, 180),
     "road_block": (178, 223, 138),
@@ -38,7 +39,6 @@ MAP_PALETTE = {
     "lane_divider": (106, 61, 154),
     "divider": (106, 61, 154),
 }
-
 
 def visualize_camera(
     fpath: str,
@@ -177,6 +177,9 @@ def visualize_map(
     for k, name in enumerate(classes):
         if name in MAP_PALETTE:
             canvas[masks[k], :] = MAP_PALETTE[name]
+        # 只把drivable_area画出来
+        # if name == "drivable_area":
+        #     canvas[masks[k], :] = MAP_PALETTE["lane"]
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
 
     mmcv.mkdir_or_exist(os.path.dirname(fpath))

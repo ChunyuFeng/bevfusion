@@ -82,4 +82,5 @@ momentum_config:
   step_ratio_up: 0.4
 
 data:
-  samples_per_gpu: 6
+  # batch_size 根据显存大小进行调整
+  samples_per_gpu: 2
