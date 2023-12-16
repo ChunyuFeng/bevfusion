@@ -1,6 +1,7 @@
 import os
 from typing import Any, Dict, Tuple
 
+import cv2
 import mmcv
 import numpy as np
 from nuscenes.map_expansion.map_api import NuScenesMap
@@ -235,6 +236,8 @@ class LoadPointsFromMultiSweeps:
         return f"{self.__class__.__name__}(sweeps_num={self.sweeps_num})"
 
 
+# tools/create_data.py 并没有处理map，只生成了obstacle的gt
+# 所有用到local map的地方，都是根据cfg文件，从LoadBEVSegmentation中获取的
 @PIPELINES.register_module()
 class LoadBEVSegmentation:
     def __init__(
@@ -258,21 +261,43 @@ class LoadBEVSegmentation:
             self.maps[location] = NuScenesMap(dataset_root, location)
 
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        # The following code is used to calculate the transformation matrix from LiDAR coordinates to global coordinates.
+        # First, we retrieve the transformation matrix from LiDAR coordinates to augmented point cloud coordinates.
         lidar2point = data["lidar_aug_matrix"]
+        # We then calculate the inverse of this matrix to get the transformation from the augmented point cloud coordinates back to LiDAR coordinates.
         point2lidar = np.linalg.inv(lidar2point)
+        # Next, we retrieve the transformation matrix from LiDAR coordinates to ego vehicle coordinates.
         lidar2ego = data["lidar2ego"]
+        # We also retrieve the transformation matrix from ego vehicle coordinates to global coordinates.
         ego2global = data["ego2global"]
+        # Finally, we calculate the transformation matrix from LiDAR coordinates to global coordinates by multiplying the three transformation matrices together.
+        # The order of multiplication is important here because matrix multiplication is not commutative.
         lidar2global = ego2global @ lidar2ego @ point2lidar
 
+        # 以下代码用于从LiDAR坐标到全局坐标的转换矩阵中提取LiDAR传感器在全局坐标系统中的位置。
+        # 位置表示为2D点（x，y）。
         map_pose = lidar2global[:2, 3]
+        # 构造LiDAR传感器周围的局部地图的边界框。
+        # 边界框表示为元组（x，y，width，height），
+        # 其中（x，y）是LiDAR传感器的位置，width和height是局部地图的尺寸。
         patch_box = (map_pose[0], map_pose[1], self.patch_size[0], self.patch_size[1])
 
+        # 以下代码用于计算从LiDAR坐标到全局坐标的转换矩阵中的旋转部分，并计算出偏航角。
+        # 首先，我们获取从LiDAR坐标到全局坐标的转换矩阵的旋转部分。
         rotation = lidar2global[:3, :3]
+        # 然后，我们将旋转矩阵与向量[1, 0, 0]进行点积运算。
         v = np.dot(rotation, np.array([1, 0, 0]))
+        # 接着，我们使用arctan2函数计算出偏航角。
         yaw = np.arctan2(v[1], v[0])
+        # 最后，我们将偏航角从弧度转换为角度。
         patch_angle = yaw / np.pi * 180
 
+        # 以下代码用于从局部地图中提取语义分割标签。
+        # 我们首先定义一个字典，将语义分割标签的名称映射到地图中的图层名称。
         mappings = {}
+        # 我们将“drivable_area”映射到“road_segment”和“lane”。
+        # 我们将“divider”映射到“road_divider”和“lane_divider”。
+        # 我们将其他语义分割标签映射到它们自己。
         for name in self.classes:
             if name == "drivable_area*":
                 mappings[name] = ["road_segment", "lane"]
@@ -286,23 +311,90 @@ class LoadBEVSegmentation:
             layer_names.extend(mappings[name])
         layer_names = list(set(layer_names))
 
+        # 以下代码用于将BEV obstacles的信息加入地图掩膜中。
+        obs_bev_coords = data["gt_bboxes_3d"].corners[:, [0, 3, 7, 4], :2]
+
+        # # 使用np.concatenate将全零数组添加到obs_bev_coords的最后一个维度
+        # obs_bev_coords = np.concatenate([obs_bev_coords, np.zeros((*obs_bev_coords.shape[:-1], 1))], axis=-1)
+        # # 将obs_bev_coords的每个点坐标扩展为齐次坐标
+        # obs_bev_coords_hom = np.concatenate([obs_bev_coords, np.ones((*obs_bev_coords.shape[:-1], 1))], axis=-1)
+        # # 使用lidar2global转换矩阵乘以obs_bev_coords_hom的最后两个维度，得到转换后的坐标
+        # obs_bev_coords_global_hom = np.einsum('ij,klj->kli', lidar2global, obs_bev_coords_hom)
+        # # 将转换后的坐标的最后一个元素（即齐次坐标中的1）去掉，得到在全局坐标系下的obs_bev_coords
+        # obs_bev_coords_global = obs_bev_coords_global_hom[:, :, :2]
+
+        # 在map里创建obstacle层不合理，所以这里直接把obstacle的mask加到drivable_area里
+        # 创建same size的全0 矩阵
+        obs_mask = np.zeros((self.canvas_size[0], self.canvas_size[1]), dtype=np.uint8)
+        canvas_center = (obs_mask.shape[1] // 2, obs_mask.shape[0] // 2)
+        for index in range(obs_bev_coords.shape[0]):
+            # 画出每个obstacle的mask
+            bbox = obs_bev_coords[index]
+            bbox = bbox.numpy().astype(np.int32)
+            obs_mask = cv2.fillPoly(obs_mask, [bbox], 1, offset=canvas_center)
+
+        # 水平翻转
+        obs_mask = np.flip(obs_mask, axis=0)
+        # 顺时针旋转90度，与map的坐标系对齐
+        # 获取图像的形状
+        h, w = obs_mask.shape
+        # 计算旋转中心
+        center = (w / 2, h / 2)
+        # 获取旋转矩阵
+        M = cv2.getRotationMatrix2D(center, -90, 1)
+        # 应用旋转矩阵
+        obs_mask = cv2.warpAffine(obs_mask.astype(np.uint8), M, (w, h))
+
+        obs_mask = obs_mask.astype(np.bool)
+
+        # 以下代码用于从数据中获取地图位置，并使用NuScenesMap的get_map_mask方法获取地图掩膜。
+        # 地图位置由"data"字典中的"location"键获取。
         location = data["location"]
+        # get_map_mask方法需要以下参数：
+        # - patch_box：LiDAR传感器周围的局部地图的边界框。
+        # - patch_angle：局部地图的偏航角。
+        # - layer_names：需要获取的地图层的名称列表。
+        # - canvas_size：画布大小，即输出地图掩膜的大小。
         masks = self.maps[location].get_map_mask(
             patch_box=patch_box,
             patch_angle=patch_angle,
             layer_names=layer_names,
             canvas_size=self.canvas_size,
         )
+        # 由于地图掩膜的形状可能与预期的不同，因此我们需要对其进行转置以获得正确的形状。
         # masks = masks[:, ::-1, :].copy()
         masks = masks.transpose(0, 2, 1)
+        # 最后，我们将地图掩膜的数据类型转换为布尔型，因为掩膜是二进制的。
         masks = masks.astype(np.bool)
 
+        # 以下代码用于生成地图掩膜的标签。
+        # 首先，我们获取类别的数量，并为每个类别创建一个全零的标签矩阵。
         num_classes = len(self.classes)
         labels = np.zeros((num_classes, *self.canvas_size), dtype=np.long)
+        # 然后，我们遍历每个类别。
         for k, name in enumerate(self.classes):
+            # 对于每个类别，我们遍历其对应的地图层。
             for layer_name in mappings[name]:
+                # 我们找到当前地图层在所有地图层中的索引。
                 index = layer_names.index(layer_name)
-                labels[k, masks[index]] = 1
+                # 然后，我们将当前地图层的掩膜应用到对应类别的标签矩阵上。
+                # 这样，标签矩阵中的每个像素值将表示该像素是否属于当前类别。
+                if layer_name == "drivable_area":
+                    overlap = np.logical_and(obs_mask, masks[index])
+                    drivable_area = np.logical_and(masks[index], np.logical_not(overlap))
+                    labels[k, drivable_area] = 1
+                else:
+                    labels[k, masks[index]] = 1
+
+                # if layer_name == "drivable_area":
+                #     labels[k, obs_mask] = 1
+                # else:
+                #     labels[k, masks[index]] = 1
+
+        # labels[0, masks[5]] = 0
+
+        # overlap = np.logical_and(obs_mask, masks[5])
+        # labels[0, overlap] = 0
 
         data["gt_masks_bev"] = labels
         return data

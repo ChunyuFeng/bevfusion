@@ -123,15 +123,14 @@ def main() -> None:
             bboxes = None
             labels = None
 
-        # 使用bboxes，投影到mask上
-        # if bboxes is not None and len(bboxes) > 0:
-        #     # 取bbox在bev视角下的四个点的坐标，最后一个点是第一个点的重复，以闭合矩形
-        #     coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
-        #     for index in range(coords.shape[0]):
-
+        # 以下代码用于加载地图掩膜数据。
+        # 如果模式是"gt"并且数据中存在"gt_masks_bev"，我们将从数据中获取"gt_masks_bev"并将其转换为numpy数组。
+        # 然后，我们将掩膜的数据类型转换为布尔型，因为掩膜是二进制的。
         if args.mode == "gt" and "gt_masks_bev" in data:
             masks = data["gt_masks_bev"].data[0].numpy()
             masks = masks.astype(np.bool)
+        # 如果模式是"pred"并且输出中存在"masks_bev"，我们将从输出中获取"masks_bev"并将其转换为numpy数组。
+        # 然后，我们使用`args.map_score`值对掩膜执行阈值操作。此操作将掩膜中大于或等于`args.map_score`的所有值设置为True，所有其他值设置为False。
         elif args.mode == "pred" and "masks_bev" in outputs[0]:
             masks = outputs[0]["masks_bev"].numpy()
             masks = masks >= args.map_score
@@ -150,7 +149,7 @@ def main() -> None:
         #             transform=metas["lidar2image"][k],
         #             classes=cfg.object_classes,
         #         )
-
+        #
         # if "points" in data:
         #     lidar = data["points"].data[0][0].numpy()
         #     visualize_lidar(

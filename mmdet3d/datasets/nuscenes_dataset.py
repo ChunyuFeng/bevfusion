@@ -317,6 +317,8 @@ class NuScenesDataset(Custom3DDataset):
         # the nuscenes box center is [0.5, 0.5, 0.5], we change it to be
         # the same as KITTI (0.5, 0.5, 0)
         # haotian: this is an important change: from 0.5, 0.5, 0.5 -> 0.5, 0.5, 0
+        # bbox的大小被归一化为1 * 1 * 1，所以中心点在0.5, 0.5, 0.5，此处将其改为0.5, 0.5, 0
+        # 后续要得到其在lidar坐标系下的坐标，需要将其乘以lidar坐标系下的缩放因子，也就是框的尺寸
         gt_bboxes_3d = LiDARInstance3DBoxes(
             gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5, 0.5, 0)
         ).convert_to(self.box_mode_3d)

@@ -1,8 +1,5 @@
 dataset_type: NuScenesDataset
-# for pycharm remote debug
 dataset_root: data/nuscenes/
-# for remote run
-#dataset_root: data/nuscenes/
 gt_paste_stop_epoch: -1
 reduce_beams: 32
 load_dim: 5
@@ -136,8 +133,8 @@ train_pipeline:
   -
     type: LoadBEVSegmentation
     dataset_root: ${dataset_root}
-    xbound: [-50.0, 50.0, 0.2]
-    ybound: [-50.0, 50.0, 0.2]
+    xbound: [-50.0, 50.0, 0.5]
+    ybound: [-50.0, 50.0, 0.5]
     classes: ${map_classes}
   -
     type: RandomFlip3D

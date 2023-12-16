@@ -338,6 +338,7 @@ def create_groundtruth_database(
             with open(abs_filepath, "w") as f:
                 gt_points.tofile(f)
 
+
             if (used_classes is None) or names[i] in used_classes:
                 db_info = {
                     "name": names[i],
