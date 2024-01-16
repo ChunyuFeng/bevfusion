@@ -81,14 +81,7 @@ def main() -> None:
         )
         model.eval()
 
-    count = 0
-
     for data in tqdm(dataflow):
-        count = count + 1
-        if count == 475:
-            print("475")
-        if count == 476:
-            print("476")
         metas = data["metas"].data[0][0]
         name = "{}-{}".format(metas["timestamp"], metas["token"])
 
@@ -156,7 +149,7 @@ def main() -> None:
         #             transform=metas["lidar2image"][k],
         #             classes=cfg.object_classes,
         #         )
-
+        #
         # if "points" in data:
         #     lidar = data["points"].data[0][0].numpy()
         #     visualize_lidar(
@@ -176,7 +169,6 @@ def main() -> None:
                 masks,
                 classes=cfg.map_classes,
             )
-
 
 
 

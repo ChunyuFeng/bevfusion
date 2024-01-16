@@ -176,11 +176,11 @@ def visualize_map(
     canvas[:] = background
 
     for k, name in enumerate(classes):
-        # if name in MAP_PALETTE:
-        #     canvas[masks[k], :] = MAP_PALETTE[name]
-        # 只把drivable_area画出来
-        if name == "drivable_area":
+        if name in MAP_PALETTE:
             canvas[masks[k], :] = MAP_PALETTE[name]
+        # 只把drivable_area画出来
+        # if name == "drivable_area":
+        #     canvas[masks[k], :] = MAP_PALETTE[name]
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
 
     mmcv.mkdir_or_exist(os.path.dirname(fpath))

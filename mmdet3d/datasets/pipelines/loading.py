@@ -311,39 +311,35 @@ class LoadBEVSegmentation:
             layer_names.extend(mappings[name])
         layer_names = list(set(layer_names))
 
-        # 以下代码用于将BEV obstacles的信息加入地图掩膜中。
-        obs_bev_coords = data["gt_bboxes_3d"].corners[:, [0, 3, 7, 4], :2]
-
-        # # 使用np.concatenate将全零数组添加到obs_bev_coords的最后一个维度
-        # obs_bev_coords = np.concatenate([obs_bev_coords, np.zeros((*obs_bev_coords.shape[:-1], 1))], axis=-1)
-        # # 将obs_bev_coords的每个点坐标扩展为齐次坐标
-        # obs_bev_coords_hom = np.concatenate([obs_bev_coords, np.ones((*obs_bev_coords.shape[:-1], 1))], axis=-1)
-        # # 使用lidar2global转换矩阵乘以obs_bev_coords_hom的最后两个维度，得到转换后的坐标
-        # obs_bev_coords_global_hom = np.einsum('ij,klj->kli', lidar2global, obs_bev_coords_hom)
-        # # 将转换后的坐标的最后一个元素（即齐次坐标中的1）去掉，得到在全局坐标系下的obs_bev_coords
-        # obs_bev_coords_global = obs_bev_coords_global_hom[:, :, :2]
-
-        # 在map里创建obstacle层不合理，所以这里直接把obstacle的mask加到drivable_area里
-        # 创建same size的全0 矩阵
-        obs_mask = np.zeros((self.canvas_size[0], self.canvas_size[1]), dtype=np.uint8)
-        canvas_center = (obs_mask.shape[1] // 2, obs_mask.shape[0] // 2)
-        for index in range(obs_bev_coords.shape[0]):
-            # 画出每个obstacle的mask
-            bbox = obs_bev_coords[index]
-            bbox = bbox.numpy().astype(np.int32)
-            obs_mask = cv2.fillPoly(obs_mask, [bbox], 1, offset=canvas_center)
-
-        # 水平翻转
-        obs_mask = np.flip(obs_mask, axis=0)
-        # 顺时针旋转90度，与map的坐标系对齐
-        # 获取图像的形状
-        h, w = obs_mask.shape
-        # 计算旋转中心
-        center = (w / 2, h / 2)
-        # 获取旋转矩阵
-        M = cv2.getRotationMatrix2D(center, -90, 1)
-        # 应用旋转矩阵
-        obs_mask = cv2.warpAffine(obs_mask.astype(np.uint8), M, (w, h))
+        # if "gt_bboxes_3d" in data and hasattr(data["gt_bboxes_3d"], 'corners') and data["gt_bboxes_3d"].corners is not None and len(data["gt_bboxes_3d"].corners) != 0:
+        if "gt_bboxes_3d" in data and len(data["gt_bboxes_3d"]) > 0 and hasattr(data["gt_bboxes_3d"], 'corners'):
+            if data["gt_bboxes_3d"].corners is not None and len(data["gt_bboxes_3d"].corners) != 0:
+                # 以下代码用于将BEV obstacles的信息加入地图掩膜中。
+                obs_bev_coords = data["gt_bboxes_3d"].corners[:, [0, 3, 7, 4], :2]
+                # 在map里创建obstacle层不合理，所以这里直接把obstacle的mask加到drivable_area里
+                # 创建same size的全0 矩阵
+                obs_mask = np.zeros((self.canvas_size[0], self.canvas_size[1]), dtype=np.uint8)
+                canvas_center = (obs_mask.shape[1] // 2, obs_mask.shape[0] // 2)
+                for index in range(obs_bev_coords.shape[0]):
+                    # 画出每个obstacle的mask
+                    bbox = obs_bev_coords[index]
+                    bbox = bbox.numpy().astype(np.int32)
+                    obs_mask = cv2.fillPoly(obs_mask, [bbox], 1, offset=canvas_center)
+                # 水平翻转
+                obs_mask = np.flip(obs_mask, axis=0)
+                # 顺时针旋转90度，与map的坐标系对齐
+                # 获取图像的形状
+                h, w = obs_mask.shape
+                # 计算旋转中心
+                center = (w / 2, h / 2)
+                # 获取旋转矩阵
+                M = cv2.getRotationMatrix2D(center, -90, 1)
+                # 应用旋转矩阵
+                obs_mask = cv2.warpAffine(obs_mask.astype(np.uint8), M, (w, h))
+            else:
+                obs_mask = obs_mask = np.zeros((self.canvas_size[0], self.canvas_size[1]), dtype=np.uint8)
+        else:
+            obs_mask = obs_mask = np.zeros((self.canvas_size[0], self.canvas_size[1]), dtype=np.uint8)
 
         obs_mask = obs_mask.astype(np.bool)
 
@@ -379,17 +375,13 @@ class LoadBEVSegmentation:
                 index = layer_names.index(layer_name)
                 # 然后，我们将当前地图层的掩膜应用到对应类别的标签矩阵上。
                 # 这样，标签矩阵中的每个像素值将表示该像素是否属于当前类别。
-                if layer_name == "drivable_area":
-                    overlap = np.logical_and(obs_mask, masks[index])
-                    drivable_area = np.logical_and(masks[index], np.logical_not(overlap))
-                    labels[k, drivable_area] = 1
+                if layer_name == "drivable_area" and obs_mask is not None:
+                        overlap = np.logical_and(obs_mask, masks[index])
+                        drivable_area = np.logical_and(masks[index], np.logical_not(overlap))
+                        labels[k, drivable_area] = 1
                 else:
                     labels[k, masks[index]] = 1
 
-                # if layer_name == "drivable_area":
-                #     labels[k, obs_mask] = 1
-                # else:
-                #     labels[k, masks[index]] = 1
 
         # labels[0, masks[5]] = 0
 
