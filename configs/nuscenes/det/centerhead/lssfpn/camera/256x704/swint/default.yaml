@@ -83,4 +83,4 @@ momentum_config:
 
 data:
   # batch_size 根据显存大小进行调整
-  samples_per_gpu: 2
+  samples_per_gpu: 4
